@@ -1,44 +1,39 @@
 FROM alpine:latest
 COPY get-last-layer.sh build.mk fix-execvpe-signature-ghc-7.8.4.patch /tmp/
-RUN : "Layer 1: fully working basic GHC in /usr/local" && \
-    mkdir /tmp/ghc && \
-    cd /tmp/ghc && \
-    apk add --update curl xz alpine-sdk perl gmp-dev file gmp openssh openssl zlib-dev strace vim less jq ncurses-dev bash autoconf && \
-    cd /tmp && \
-    wget https://nixos.org/releases/patchelf/patchelf-0.8/patchelf-0.8.tar.bz2 && \
-    tar xfj patchelf-0.8.tar.bz2 && \
-    cd patchelf-0.8 && \
-    ./configure && make install && \
-    cd .. && \
-    rm -rf patchelf* && \
-    sh /tmp/get-last-layer.sh nilcons/ghc-musl-auto ghc-cross >ghc-cross.tar.gz && \
-    tar xvfz ghc-cross.tar.gz && \
-    tar -xvJ -C / -f /tmp/ghc/ghc-7.8.4-x86_64-unknown-linux-musl.tar.xz && \
-    wget https://www.haskell.org/ghc/dist/7.8.4/ghc-7.8.4-src.tar.bz2 && \
-    tar xvfj ghc-7.8.4-src.tar.bz2 && \
-    cd /tmp/ghc/ghc-7.8.4 && \
-    cp -v /tmp/build.mk mk/build.mk && \
-    patch -p1 </tmp/fix-execvpe-signature-ghc-7.8.4.patch && \
-    PATH=/opt/ghc-cross/bin:$PATH ./configure && \
-    : "libffi has a bug, which we patch here" && \
-    sed -i 's,chmod,sed -i s/__gnu_linux__/1/ libffi/build/src/closures.c \&\& chmod,' libffi/ghc.mk && \
-    make -j8 && \
-    make binary-dist && \
-    cd /tmp && \
-    mv ghc/ghc-7.8.4/ghc-7.8.4-x86_64-unknown-linux.tar.bz2 . && \
-    rm -rf ghc /opt/ghc-cross && \
-    : && \
-    : end of build, but we want to minimize docker layer sizes && \
-    : so we extract ghc here and delete the tarball && \
-    : && \
-    tar xvfj ghc-7.8.4-x86_64-unknown-linux.tar.bz2 && \
-    cd ghc-7.8.4 && \
-    ./configure && \
-    : musl ld requires --no-pie to work for some reason with ghc && \
-    sed -i '/C\ compiler\ link/{ s/""/"--no-pie"/ }' settings && \
-    make install && \
-    cd /tmp && \
-    rm -rf ghc-7.8.4 ghc-7.8.4-x86_64-unknown-linux.tar.bz2
+
+RUN : "Layer 1: fully working basic GHC in /usr/local"
+RUN apk add --update curl xz alpine-sdk perl gmp-dev file gmp openssh openssl zlib-dev strace vim less jq ncurses-dev bash autoconf
+WORKDIR /tmp
+RUN wget https://nixos.org/releases/patchelf/patchelf-0.8/patchelf-0.8.tar.bz2
+RUN tar xfj patchelf-0.8.tar.bz2
+WORKDIR /tmp/patchelf-0.8
+RUN ./configure && make install
+WORKDIR /tmp
+RUN rm -rf patchelf*
+RUN sh /tmp/get-last-layer.sh nilcons/ghc-musl-auto ghc-cross >ghc-cross.tar.gz
+RUN tar xvfz ghc-cross.tar.gz
+RUN tar -xvJ -C / -f ghc-7.8.4-x86_64-unknown-linux-musl.tar.xz
+RUN wget https://www.haskell.org/ghc/dist/7.8.4/ghc-7.8.4-src.tar.bz2
+RUN tar xvfj ghc-7.8.4-src.tar.bz2
+WORKDIR /tmp/ghc-7.8.4
+RUN cp -v /tmp/build.mk mk/build.mk
+RUN patch -p1 </tmp/fix-execvpe-signature-ghc-7.8.4.patch
+RUN PATH=/opt/ghc-cross/bin:$PATH ./configure
+RUN sed -i 's,chmod,sed -i s/__gnu_linux__/1/ libffi/build/src/closures.c \&\& chmod,' libffi/ghc.mk
+RUN make -j8
+RUN make binary-dist
+WORKDIR /tmp
+RUN mv ghc-7.8.4/ghc-7.8.4-x86_64-unknown-linux.tar.bz2 .
+RUN rm -rf ghc /opt/ghc-cross
+RUN mkdir /tmp/ghc-inst
+WORKDIR /tmp/ghc-inst
+RUN tar xvfj ../ghc-7.8.4-x86_64-unknown-linux.tar.bz2
+WORKDIR /tmp/ghc-inst/ghc-7.8.4
+RUN ./configure 
+RUN sed -i '/C\ compiler\ link/{ s/""/"--no-pie"/ }' settings
+RUN make install
+WORKDIR /tmp
+RUN rm -rf ghc-7.8.4 ghc-7.8.4-x86_64-unknown-linux.tar.bz2
 
 ENV PATH=/root/.cabal/bin:$PATH
 RUN : "Layer 2: cabal-install, but only the binary, no executables" && \
